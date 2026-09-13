@@ -8,6 +8,7 @@ from geometry_msgs.msg import Twist
 from rclpy.node import Node
 from rclpy.signals import SignalHandlerOptions
 from turtlesim_msgs.msg import Pose
+from nav_msgs.msg import OccupancyGrid
 
 class Distance:
     def __init__(self, distance, heading):
@@ -16,17 +17,19 @@ class Distance:
 class Stage(Enum):
     OUTBOUND = 1
     WAITING = 2
-    INBOUND = 3
-    COMPLETE = 4
+    COMPLETE = 3
 
 class GoalDriver(Node):
     def __init__(self):
         super().__init__('goal_driver')
-        self.target_x = 10.0
-        self.target_y = 5.0
-        self.waypoint_index = 0.0
-        self.original_x = None
-        self.original_y = None
+        # super().Subscriber('/map', OccupancyGrid, self.map_cb)
+        self.waypoint_index = 0
+        self.waypoints = [
+            (2.0, 4.0),
+            (7.0, 8.0),
+            (1.0, 5.0)
+        ]
+        self.initialized = False
         self.stage = Stage.OUTBOUND
         self.resume_at = 0.0
         self.WAIT_SECONDS = 5.0
@@ -34,7 +37,12 @@ class GoalDriver(Node):
         self.subscription = self.create_subscription(
             Pose, 'turtle1/pose', self.on_pose, 10)
         self.get_logger().info(
-            f'Driving to ({self.target_x}, {self.target_y}). Press Ctrl+C to exit.')
+            f'Driving to ({self.waypoints[self.waypoint_index]}, {self.waypoints[self.waypoint_index]}). Press Ctrl+C to exit.')
+
+    def map_cb(self, msg):
+        # self.origin = msg.map_data.
+        self.width = msg.info.width * msg.info.resolution
+        self.height = msg.info.height * msg.info.resolution
 
     def find_distance(self, cur_x, cur_y, target_x, target_y):
         dx = target_x - cur_x
@@ -46,29 +54,24 @@ class GoalDriver(Node):
             return
         elif self.stage is Stage.WAITING:
             if self.resume_at < time.monotonic():
-                self.stage = Stage.INBOUND
+                self.waypoint_index += 1
+                if self.waypoint_index < len(self.waypoints):
+                    self.stage = Stage.OUTBOUND
+                else:
+                    self.stage = Stage.COMPLETE
             return
-        elif self.original_x is None:
-            self.original_x = pose.x
-            self.original_y = pose.y
+        elif not self.initialized:
+            self.initialized = True
+            self.waypoints.append((pose.x, pose.y))
 
-        if self.stage is Stage.OUTBOUND:
-            goal = self.find_distance(pose.x, pose.y, self.target_x, self.target_y)
-        else:
-            goal = self.find_distance(pose.x, pose.y, self.original_x, self.original_y)
+        goal = self.find_distance(pose.x, pose.y, self.waypoints[self.waypoint_index][0], self.waypoints[self.waypoint_index][1])
         command = Twist()
 
         if self.stage is Stage.OUTBOUND and goal.distance < 0.15:
             self.stage = Stage.WAITING
             self.publisher.publish(command)  # Zero speeds: stop.
             self.resume_at = time.monotonic() + self.WAIT_SECONDS
-            self.get_logger().info('Arrived!')
-            return
-
-        if self.stage is Stage.INBOUND and goal.distance < 0.15:
-            self.stage = Stage.COMPLETE
-            self.publisher.publish(command)  # Zero speeds: stop.
-            self.get_logger().info('Completed cycle! Press Ctrl+C to exit.')
+            self.get_logger().info(f'Arrived at {self.waypoints[self.waypoint_index]}!')
             return
 
         error = goal.heading - pose.theta
