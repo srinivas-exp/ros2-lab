@@ -1,0 +1,27 @@
+# ROS / colcon generated outputs
+/build/
+/install/
+/log/
+
+# Python generated files
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Local Python / Pixi environments
+.venv/
+venv/
+.pixi/
+
+# Local secrets
+.env
+.env.*
+!.env.example
+
+# OS files
+Thumbs.db
+Desktop.ini
+.DS_Store
