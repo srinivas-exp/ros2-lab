@@ -13,10 +13,12 @@
     # Listen to velocity changes
     ros2 topic echo /turtle1/cmd_vel
 
-    # Run the python program
+    # 1. Run the python program
      ..\.pixi\envs\default\python.exe .\0_init_and_test\0_turtlebot_circle.py
 
-    
+    # 2. Run the python program
+    ..\.pixi\envs\default\python.exe .\0_init_and_test\1_turtlebot_goal.py
+
     # Optional: Reset Turtlebot location
     ros2 service call /reset std_srvs/srv/Empty "{}"
 
