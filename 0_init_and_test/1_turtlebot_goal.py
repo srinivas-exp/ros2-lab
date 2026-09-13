@@ -23,6 +23,8 @@ class Stage(Enum):
 class GoalDriver(Node):
     def __init__(self):
         super().__init__('goal_driver')
+        self.declare_parameter('wait_seconds', 15.0)
+
         # super().Subscriber('/map', OccupancyGrid, self.map_cb)
         self.waypoint_index = 0
         self.waypoints = [
@@ -34,7 +36,7 @@ class GoalDriver(Node):
         self.initialized = False
         self.stage = Stage.OUTBOUND
         self.resume_at = 0.0
-        self.WAIT_SECONDS = 5.0
+        self.WAIT_SECONDS = self.get_parameter('wait_seconds').value
         self.paused = False
         self.publisher = self.create_publisher(Twist, 'turtle1/cmd_vel', 10)
         self.subscription = self.create_subscription(
@@ -98,6 +100,7 @@ class GoalDriver(Node):
             self.publisher.publish(command)  # Zero speeds: stop.
             self.resume_at = time.monotonic() + self.WAIT_SECONDS
             self.get_logger().info(f'Arrived at {self.waypoints[self.waypoint_index]}!')
+            self.get_logger().info(f'Waiting for {self.WAIT_SECONDS}...')
             return
 
         error = goal.heading - pose.theta
