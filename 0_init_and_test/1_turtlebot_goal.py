@@ -9,6 +9,7 @@ from rclpy.node import Node
 from rclpy.signals import SignalHandlerOptions
 from turtlesim_msgs.msg import Pose
 from nav_msgs.msg import OccupancyGrid
+from std_srvs.srv import SetBool
 
 class Distance:
     def __init__(self, distance, heading):
@@ -27,17 +28,36 @@ class GoalDriver(Node):
         self.waypoints = [
             (2.0, 4.0),
             (7.0, 8.0),
-            (1.0, 5.0)
+            (1.0, 5.0),
+            (1.0, 15.0)
         ]
         self.initialized = False
         self.stage = Stage.OUTBOUND
         self.resume_at = 0.0
         self.WAIT_SECONDS = 5.0
+        self.paused = False
         self.publisher = self.create_publisher(Twist, 'turtle1/cmd_vel', 10)
         self.subscription = self.create_subscription(
             Pose, 'turtle1/pose', self.on_pose, 10)
+        self.pause_service = self.create_service(SetBool, 'pause', self.on_pause)
         self.get_logger().info(
             f'Driving to ({self.waypoints[self.waypoint_index]}, {self.waypoints[self.waypoint_index]}). Press Ctrl+C to exit.')
+
+    def valid_waypoint(self, x, y):
+        return (
+            math.isfinite(x)
+            and math.isfinite(y)
+            and 0.5 <= x <= 10.5
+            and 0.5 <= y <= 10.5
+        )
+
+    def on_pause(self, request, response):
+        self.paused = request and request.data
+        if self.paused:
+            self.publisher.publish(Twist())
+        response.success = True
+        response.message = 'Paused successfully' if self.paused else 'Resumed or not paused'
+        return response
 
     def map_cb(self, msg):
         # self.origin = msg.map_data.
@@ -50,15 +70,21 @@ class GoalDriver(Node):
         return Distance(math.hypot(dx, dy), math.atan2(dy, dx))
 
     def on_pose(self, pose):
-        if self.stage is Stage.COMPLETE:
+        if self.stage is Stage.COMPLETE or self.paused:
             return
         elif self.stage is Stage.WAITING:
             if self.resume_at < time.monotonic():
                 self.waypoint_index += 1
-                if self.waypoint_index < len(self.waypoints):
-                    self.stage = Stage.OUTBOUND
-                else:
+                while self.waypoint_index < len(self.waypoints) and not self.valid_waypoint(*self.waypoints[self.waypoint_index]):
+                    self.get_logger().info(f'Skipping invalid waypoint {self.waypoints[self.waypoint_index]}')
+                    self.waypoint_index += 1
+                if self.waypoint_index >= len(self.waypoints):
                     self.stage = Stage.COMPLETE
+                    self.get_logger().info('All deliveries completed!')
+                else:
+                    self.get_logger().info(
+                        f'Driving to ({self.waypoints[self.waypoint_index]}, {self.waypoints[self.waypoint_index]}). Press Ctrl+C to exit.')
+                    self.stage = Stage.OUTBOUND
             return
         elif not self.initialized:
             self.initialized = True
